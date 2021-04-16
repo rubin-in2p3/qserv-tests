@@ -3,6 +3,8 @@
 Utility script to benchmark the cosmoDC2 database in qserv 
 """
 
+import os
+import time
 import mysql
 from mysql.connector import Error
 from optparse import OptionParser
@@ -19,9 +21,35 @@ def listDB(conn, cursor):
 	cursor.execute(query)
 	res = cursor.fetchall()
 
-	print(f'Found{len(res)} databases')
-	print(item['Database'] for item in res)
+	print(f'{len(res)} databases found')
+	print([item['Database'] for item in res])
 
+def countObjects(conn, cursor):
+	query = "SELECT COUNT(*) FROM cosmoDC2_v1_1_4_image.position;"
+	cursor.execute(query)
+	res = cursor.fetchall()
+
+	print(f"{res[0]['COUNT(*)']} entries found" )
+
+def fullScan_1(conn):
+	# Simple query to select galaxy clusters
+
+	mmin = 5.e14 #Msun
+	zmax = 2
+
+	query = "SELECT data.coord_ra, data.coord_dec, data.halo_mass, data.redshift, data.halo_id FROM cosmoDC2_v1_1_4_image.data as data "
+	query += f"WHERE data.halo_mass>{mmin} AND data.redshift<{zmax} "
+	query += "AND is_central = 1 " 
+	query += "AND Mag_true_z_lsst_z0 < 1.5 "
+	query += ";"
+
+	print(query)
+	print("This query should run in ~4 minutes if the cache is empty and in ~1.5 minutes if the table is loaded in the cache")
+	startTime = time.time()
+	tab = pd.read_sql_query(query,conn)
+	endTime = time.time()
+	print(f"{len(tab)} galaxy clusters found (should be 147)")
+	print("query ran in {:.1f} seconds".format(endTime - startTime))
 
 def main():
     parser = OptionParser(usage="usage: %prog [options] input",
@@ -47,9 +75,15 @@ def main():
     if len(args) != 0:
         parse.error("Wrong number of arguments")
 
+    cls = lambda: os.system('cls' if os.name=='nt' else 'clear')
+
     conn, cursor = qservInit(opts.host, opts.user, opts.port)
 
-
+    print("\n \n \n")
+    print(f"Checking database {opts.database}")
+    listDB(conn, cursor)
+    countObjects(conn, cursor)
+    fullScan_1(conn)
 
 if __name__ == '__main__':
     main()
