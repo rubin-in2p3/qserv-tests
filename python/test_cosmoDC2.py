@@ -21,7 +21,7 @@ def listDB(conn, cursor):
 	cursor.execute(query)
 	res = cursor.fetchall()
 
-	print(f'{len(res)} databases found')
+	print(f'found {len(res)} databases on the qserv cluster')
 	print([item['Database'] for item in res])
 
 def countObjects(conn, cursor):
