@@ -24,12 +24,12 @@ def listDB(conn, cursor):
 	print(f'found {len(res)} databases on the qserv cluster')
 	print([item['Database'] for item in res])
 
-def countObjects(conn, cursor):
-	query = "SELECT COUNT(*) FROM cosmoDC2_v1_1_4_image.position;"
+def countObjects(conn, cursor, db):
+	query = f"SELECT COUNT(*) FROM {db}.position;"
 	cursor.execute(query)
 	res = cursor.fetchall()
 
-	print(f"{res[0]['COUNT(*)']} entries found" )
+	print(f"{res[0]['COUNT(*)']} entries found - Should be 2256249331" )
 
 def fullScan_1(conn):
 	# Simple query to select galaxy clusters
@@ -75,14 +75,16 @@ def main():
     if len(args) != 0:
         parse.error("Wrong number of arguments")
 
+    database = opts.database
+
     cls = lambda: os.system('cls' if os.name=='nt' else 'clear')
 
     conn, cursor = qservInit(opts.host, opts.user, opts.port)
 
     print("\n \n \n")
-    print(f"Checking database {opts.database}")
+    print(f"Checking database {database}")
     listDB(conn, cursor)
-    countObjects(conn, cursor)
+    countObjects(conn, cursor, database)
     fullScan_1(conn)
 
 if __name__ == '__main__':
