@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """
-Utility script to benchmark the cosmoDC2 database in qserv 
+Utility script to benchmark the cosmoDC2 database in qserv
+Author: Dominique Boutigny - LAPP
 """
 
 import os
