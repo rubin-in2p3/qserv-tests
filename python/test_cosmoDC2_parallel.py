@@ -34,6 +34,8 @@ def query(host, port, user, db, halo):
   query += ";"
   tab = pd.read_sql_query(query,conn)
   tab['halo_id'] = halo_id
+
+  conn.close()
   return tab
 
 def parallelQuery(host, port, user, db, halos, threads):
