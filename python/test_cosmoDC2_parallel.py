@@ -23,15 +23,32 @@ def query(host, port, user, db, halo):
   ra_down = halo['ra'] - 0.3
   dec_up = halo['dec'] + 0.3
   dec_down = halo['dec'] - 0.3
-  query = "SELECT data.coord_ra, data.coord_dec, data.redshift, "
-  query += "data.mag_i, data.mag_r, data.mag_y, data.galaxy_id, "
-  query += "data.shear_1, data.shear_2, data.convergence, "
-  query += "data.ellipticity_1_true, data.ellipticity_2_true " 
-  query += f"FROM {db}.data as data "
-  query += f"WHERE data.redshift >= {z_halo + 0.1} "
-  query += f"AND scisql_s2PtInBox(data.coord_ra, data.coord_dec, {ra_down}, {dec_down}, {ra_up}, {dec_up}) = 1 "
-  query += f"AND data.mag_i <= 23 "
-  query += ";"
+
+  query = f"""
+    SELECT
+      data.coord_ra, 
+      data.coord_dec, 
+      data.redshift,
+      data.mag_i, 
+      data.mag_r, 
+      data.mag_y, 
+      data.galaxy_id,
+      data.shear_1,
+      data.shear_2,
+      data.convergence,
+      data.ellipticity_1_true, 
+      data.ellipticity_2_true 
+  
+    FROM
+      {db}.data as data
+
+    WHERE
+      scisql_s2PtInBox(data.coord_ra, data.coord_dec, {ra_down}, {dec_down}, {ra_up}, {dec_up}) = 1
+
+      AND data.redshift >= {z_halo + 0.1} 
+      AND data.mag_i <= 23;
+  """
+
   tab = pd.read_sql_query(query,conn)
   tab['halo_id'] = halo_id
 

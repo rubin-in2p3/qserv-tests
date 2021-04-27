@@ -8,6 +8,7 @@ import os
 import time
 import mysql
 from mysql.connector import Error
+import sqlparse
 from optparse import OptionParser
 import pandas as pd
 
@@ -30,7 +31,7 @@ def countObjects(conn, cursor, db):
 	cursor.execute(query)
 	res = cursor.fetchall()
 
-	print(f"{res[0]['COUNT(*)']} entries found - Should be 2256249331" )
+	print(f"{res[0]['COUNT(*)']} entries found - Should be 2 256 249 331" )
 
 def fullScan_1(conn):
 	# Simple query to select galaxy clusters
@@ -38,11 +39,21 @@ def fullScan_1(conn):
 	mmin = 5.e14 #Msun
 	zmax = 2
 
-	query = "SELECT data.coord_ra, data.coord_dec, data.halo_mass, data.redshift, data.halo_id FROM cosmoDC2_v1_1_4_image.data as data "
-	query += f"WHERE data.halo_mass>{mmin} AND data.redshift<{zmax} "
-	query += "AND is_central = 1 " 
-	query += "AND Mag_true_z_lsst_z0 < 1.5 "
-	query += ";"
+	query = f"""
+		SELECT 
+			data.coord_ra, 
+			data.coord_dec, 
+			data.halo_mass, data.redshift, 
+			data.halo_id 
+		FROM cosmoDC2_v1_1_4_image.data as data
+		WHERE data.halo_mass>{mmin} AND data.redshift<{zmax}
+			AND is_central = 1
+			AND Mag_true_z_lsst_z0 < 1.5
+			;
+	"""
+
+	# Format query
+	query = sqlparse.format(query, strip_comments=True, reindent=True).strip()
 
 	print(query)
 	print("This query should run in ~4 minutes if the cache is empty and in ~1.5 minutes if the table is loaded in the cache")

@@ -8,6 +8,7 @@ import os
 import time
 import mysql
 from mysql.connector import Error
+import sqlparse
 from optparse import OptionParser
 import pandas as pd
 
@@ -40,7 +41,7 @@ def countObjects(conn, cursor, db):
   print(f"{res[0]['COUNT(*)']} entries found - should be 147088445" )
 
 def fullScan_1(conn):
-  # Simple query to trigger a fuyll scan
+  # Simple query to trigger a full scan
 
   ra_min = 20
   ra_max = 95
@@ -48,60 +49,81 @@ def fullScan_1(conn):
   dec_max = 0
 
   #build a query equivalent to the "good" and "clean" flags in GCRCatalogs
-  query_good  = 'AND dref.base_PixelFlags_flag_edge = 0 '
-  query_good += 'AND dref.base_PixelFlags_flag_interpolatedCenter = 0 '
-  query_good += 'AND dref.base_PixelFlags_flag_saturatedCenter = 0 '
-  query_good += 'AND dref.base_PixelFlags_flag_crCenter = 0 '
-  query_good += 'AND dref.base_PixelFlags_flag_bad = 0 '
-  query_good += 'AND dref.base_PixelFlags_flag_suspectCenter = 0 '
-  query_good += 'AND dref.base_PixelFlags_flag_clipped = 0 '
+  query_good  = f"""
+    AND dref.base_PixelFlags_flag_edge = 0
+    AND dref.base_PixelFlags_flag_interpolatedCenter = 0
+    AND dref.base_PixelFlags_flag_saturatedCenter = 0
+    AND dref.base_PixelFlags_flag_crCenter = 0
+    AND dref.base_PixelFlags_flag_bad = 0
+    AND dref.base_PixelFlags_flag_suspectCenter = 0
+    AND dref.base_PixelFlags_flag_clipped = 0 
+  """
 
   query_clean = query_good + 'AND dref.deblend_skipped = 0 '
 
-  # This is the part of the query where we specify which columns we want to extract from the tables
-  query =  "SELECT dref.coord_ra as ra, dref.coord_dec as dec, dref.ext_shapeHSM_HsmShapeRegauss_e1, "
-  query += "dref.ext_shapeHSM_HsmShapeRegauss_e2, dref.objectId as id, dfrc.i_modelfit_CModel_instFlux "
+  # Main query
+  query = f"""
+    -- This is the part of the query where we specify which columns we want to extract from the tables
+    SELECT 
+      dref.coord_ra as ra, 
+      dref.coord_dec as dec, 
+      dref.ext_shapeHSM_HsmShapeRegauss_e1,
+      dref.ext_shapeHSM_HsmShapeRegauss_e2, 
+      dref.objectId as id, 
+      dfrc.i_modelfit_CModel_instFlux
 
-  # Here we indicate which tables will be used and at the same time we define a short alias for each table
-  query += "FROM dc2_object_run2_2i_dr6_wfd.dpdd_ref as dref, dc2_object_run2_2i_dr6_wfd.position as dpos, dc2_object_run2_2i_dr6_wfd.dpdd_forced as dfrc "
+    -- Here we indicate which tables will be used and at the same time we define a short alias for each table
+    FROM 
+      dc2_object_run2_2i_dr6_wfd.dpdd_ref as dref,
+      dc2_object_run2_2i_dr6_wfd.position as dpos,
+      dc2_object_run2_2i_dr6_wfd.dpdd_forced as dfrc
 
-  # Here we specify the ra, dec bounding box and we use the special SQL function: scisql_s2PtInBox
-  # It is mandatory to put this constraint right after the WHERE statement
-  # Using the special function is mandatory to use the special qserv optimization mechanism
-  query += f"WHERE scisql_s2PtInBox(coord_ra, coord_dec, {ra_min}, {dec_min}, {ra_max}, {dec_max}) = 1 "
+    -- Here we specify the ra, dec bounding box and we use the special SQL function: scisql_s2PtInBox
+    -- It is mandatory to put this constraint right after the WHERE statement
+    -- Using the special function is mandatory to use the special qserv optimization mechanism
+    WHERE 
+      scisql_s2PtInBox(coord_ra, coord_dec, {ra_min}, {dec_min}, {ra_max}, {dec_max}) = 1
 
-  # The following is a join between the 3 tables on the objectId. It gurantees that each line extracted from the 3 tables corresponds
-  # to the same object
-  query += "AND dref.objectId = dpos.objectId AND dfrc.objectId = dpos.objectId "
+    -- The following is a join between the 3 tables on the objectId. It gurantees that each line extracted 
+    -- from the 3 tables corresponds to the same object
+    AND dref.objectId = dpos.objectId 
+    AND dfrc.objectId = dpos.objectId
 
-  # We add all the other selection cuts
-  query += "AND dpos.detect_isPrimary = 1 "
-  query += "AND dfrc.i_modelfit_CModel_flag = 0 "
-  query += "AND dfrc.i_modelfit_CModel_instFlux > 0 "
-  query += "AND dref.base_SdssCentroid_flag = 0 "
+    -- We add all the other selection cuts
+    AND dpos.detect_isPrimary = 1
+    AND dfrc.i_modelfit_CModel_flag = 0
+    AND dfrc.i_modelfit_CModel_instFlux > 0
+    AND dref.base_SdssCentroid_flag = 0
 
-  # We can have SQL math funcions in the query
-  query += "AND dref.base_Blendedness_abs < POWER(10, -0.375) "
+    -- We can have SQL math funcions in the query
+    AND dref.base_Blendedness_abs < POWER(10, -0.375)
 
-  query += "AND dref.base_Blendedness_abs_instFlux IS NULL "
-  query += "AND dref.base_ClassificationExtendedness_flag = 0 AND dref. base_ClassificationExtendedness_value > 0 "
-  query += "AND ext_shapeHSM_HsmShapeRegauss_flag = 0 "
-  query += "AND dfrc.i_modelfit_CModel_flag = 0 AND dfrc.i_modelfit_CModel_instFlux > 0 "
+    AND dref.base_Blendedness_abs_instFlux IS NULL 
+    AND dref.base_ClassificationExtendedness_flag = 0 
+    AND dref. base_ClassificationExtendedness_value > 0 
+    AND ext_shapeHSM_HsmShapeRegauss_flag = 0 
+    AND dfrc.i_modelfit_CModel_flag = 0 AND dfrc.i_modelfit_CModel_instFlux > 0 
 
-  # We put a crazy cut on the flux S/N for demonstration purpose to limit the number of returned lines 
-  # A more reasonable cut would be ~30 as in the commented line
-  query += "AND dfrc.i_modelfit_CModel_instFlux/dfrc.i_modelfit_CModel_instFluxErr > 1000 "
+    -- We put a crazy cut on the flux S/N for demonstration purpose to limit the number of returned lines 
+    -- A more reasonable cut would be ~30 as in the commented line
+    AND dfrc.i_modelfit_CModel_instFlux/dfrc.i_modelfit_CModel_instFluxErr > 1000
 
-  query += "AND dref.ext_shapeHSM_HsmShapeRegauss_resolution >= 0.3 "
-  query += "AND dref.ext_shapeHSM_HsmShapeRegauss_sigma <= 0.4 "
+    AND dref.ext_shapeHSM_HsmShapeRegauss_resolution >= 0.3
+    AND dref.ext_shapeHSM_HsmShapeRegauss_sigma <= 0.4
 
-  # Another example of SQL math
-  query += "AND SQRT(POWER(dref.ext_shapeHSM_HsmShapeRegauss_e1, 2)+POWER(dref.ext_shapeHSM_HsmShapeRegauss_e2, 2)) < 2 "
+    -- Another example of SQL math
+    AND SQRT(POWER(dref.ext_shapeHSM_HsmShapeRegauss_e1, 2)+POWER(dref.ext_shapeHSM_HsmShapeRegauss_e2, 2)) < 2
+  """
 
   # Finally we add the query_clean that we have defined in the previous cell 
   query += query_clean
   # And the final semi-column
   query += ";"
+
+  # As the SQL python API doesn't accept SQL comments we need to filter out our 
+  # nicely formatted query
+
+  query = sqlparse.format(query, strip_comments=True, reindent=True).strip()
 
 
   print(query)
@@ -109,7 +131,7 @@ def fullScan_1(conn):
   startTime = time.time()
   tab = pd.read_sql_query(query,conn)
   endTime = time.time()
-  print(f"{len(tab)} galaxy clusters found (should be 147)")
+  print(f"{len(tab)} galaxy clusters found (should be 260787)")
   print("query ran in {:.1f} seconds".format(endTime - startTime))
 
 def main():
