@@ -1,21 +1,36 @@
 #!/usr/bin/env python
 """
 Utility script to demonstrate and benchmark parallel qserv queries on the cosmoDC2 database
-It is using a list of halos created by Constantin Payerne - LPSC 
+It is using a list of halos created by Constantin Payerne - LPSC
 Author: Dominique Boutigny - LAPP
+Modified to use system calls to mysql instead of python mysql connector by Fabrice Jammes - LPSC
 """
 
+# -------------------------------
+#  Imports of standard modules --
+# -------------------------------
+import logging
+import multiprocessing
+from optparse import OptionParser
 import os
 import time
-import mysql
-from mysql.connector import Error
 from optparse import OptionParser
-import pandas as pd
 import pickle
-import multiprocessing
 
-def query(host, port, user, db, halo):
-  conn = mysql.connector.connect(host=host, user=user, port=port)
+# ----------------------------
+# Imports for other modules --
+# ----------------------------
+import mysql.connector
+from mysql.connector import Error
+import pandas as pd
+import sqlparse
+
+# ---------------------------------
+# Local non-exported definitions --
+# ---------------------------------
+_LOG = logging.getLogger(__name__)
+
+def query(host, port, user, db, halo, mysqlclient):
 
   halo_id = halo['halo_id']
   z_halo = halo['z']
@@ -26,59 +41,61 @@ def query(host, port, user, db, halo):
 
   query = f"""
     SELECT
-      data.coord_ra, 
-      data.coord_dec, 
+      data.coord_ra,
+      data.coord_dec,
       data.redshift,
-      data.mag_i, 
-      data.mag_r, 
-      data.mag_y, 
+      data.mag_i,
+      data.mag_r,
+      data.mag_y,
       data.galaxy_id,
       data.shear_1,
       data.shear_2,
       data.convergence,
-      data.ellipticity_1_true, 
-      data.ellipticity_2_true 
-  
+      data.ellipticity_1_true,
+      data.ellipticity_2_true
+
     FROM
       {db}.data as data
 
     WHERE
       scisql_s2PtInBox(data.coord_ra, data.coord_dec, {ra_down}, {dec_down}, {ra_up}, {dec_up}) = 1
 
-      AND data.redshift >= {z_halo + 0.1} 
+      AND data.redshift >= {z_halo + 0.1}
       AND data.mag_i <= 23;
   """
 
-  tab = pd.read_sql_query(query,conn)
-  tab['halo_id'] = halo_id
+  if mysqlclient:
+    tab = None
+    stream = os.popen(f'mysql -h {host} -P {port} -u qsmaster -e "{query}"')
+    output = stream.read()
+    _LOG.info(f"---\nQUERY: {query}\nOUTPUT {output}\n---")
+  else:
+    conn = mysql.connector.connect(host=host, user=user, port=port)
 
-  conn.close()
+    tab = pd.read_sql_query(query,conn)
+    tab['halo_id'] = halo_id
+
+    conn.close()
   return tab
 
-def parallelQuery(host, port, user, db, halos, threads):
+def parallelQuery(host, port, user, db, halos, threads, mysqlclient):
   frames = []
-  n_halos = len(halos)
-  num_paquets = n_halos//threads
 
   with multiprocessing.Pool(threads) as pool:
-      for paquet in range(num_paquets):
-          print(f"processing paquet number {paquet}")
-      
-          params = [(host, port, user, db, halos[i+paquet*threads], ) for i in range(threads)]
-          results = [pool.apply_async(query, p) for p in params]
-
-          for r in results:
-              df = r.get()
-              frames.append(df)
-              
-      last_batch = n_halos%threads
-      params = [(host, port, user, db, halos[i+num_paquets*threads], ) for i in range(last_batch)]
+    i=0
+    for index in range(0, len(halos), threads):
+      _LOG.info(f"Process halos batch number: {i}")
+      halos_batch = halos[index:index + threads]
+  
+      params = [(host, port, user, db, halo, mysqlclient, ) for halo in halos_batch]
       results = [pool.apply_async(query, p) for p in params]
 
       for r in results:
           df = r.get()
-          frames.append(df)
-        
+          if not mysqlclient:
+            frames.append(df)
+      i=i+1
+
   gals = pd.concat(frames)
   return gals
 
@@ -113,10 +130,15 @@ def main():
                       type="float",
                       default=3.E14,
                       help="Halo mass cut [%default]")
+    parser.add_option("-M", "--mysql-client",
+                      action="store_true",
+                      dest="mysqlclient",
+                      help="Use mysql client instead of python mysql connector")
+    parser.add_option("--verbose", "-v", action="store_true", help="Use debug logging")
 
     (opts, args) = parser.parse_args()
     if len(args) != 0:
-        parse.error("Wrong number of arguments")
+        parser.error("Wrong number of arguments")
 
     database = opts.database
     host = opts.host
@@ -124,11 +146,23 @@ def main():
     user = opts.user
     threads = opts.threads
     massCut = opts.mass
+    mysqlclient = opts.mysqlclient
 
     cls = lambda: os.system('cls' if os.name=='nt' else 'clear')
+    
+    logger = logging.getLogger()
 
-    print("\n \n \n")
-    print(f"Checking database {database} - running {threads} queries in parallel")
+    if opts.verbose:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+    # create console handler
+    streamHandler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    streamHandler.setFormatter(formatter)
+    logger.addHandler(streamHandler)
+
+    _LOG.info(f"Checking database {database} - running {threads} queries in parallel")
 
     halosFile = opts.pickle
     with open(halosFile, 'rb') as halosFile:
@@ -137,15 +171,15 @@ def main():
     cut = halos["z"] < 1
     cut &= halos["halo_mass"] > massCut
     halos = halos[cut]
-    print(f"Number of halos: {len(halos)}")
-    print("Halo mass cut {:.2e}".format(massCut))
+    _LOG.info(f"Number of halos: {len(halos)}")
+    _LOG.info("Halo mass cut {:.2e}".format(massCut))
 
     startTime = time.time()
-    galaxies = parallelQuery(host, port, user, database, halos, threads)
+    galaxies = parallelQuery(host, port, user, database, halos, threads, mysqlclient)
     endTime = time.time()
 
-    print("*** query ran in {:.1f} seconds".format(endTime - startTime))
-    print(galaxies)
+    _LOG.info("*** query ran in {:.1f} seconds".format(endTime - startTime))
+    _LOG.info(galaxies)
 
 if __name__ == '__main__':
     main()

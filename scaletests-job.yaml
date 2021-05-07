@@ -1,0 +1,12 @@
+apiVersion: batch/v1
+kind: Job 
+metadata:
+  name: scaletests
+spec:
+  template:
+    spec:
+      containers:
+      - name: main
+        image: qserv/scaletests:latest
+        command: ['sh', '-c', '/scaletests/bin/run.sh']
+      restartPolicy: Never

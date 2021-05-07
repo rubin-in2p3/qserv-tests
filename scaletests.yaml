@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scaletests
+  labels:
+    app: scaletests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scaletests
+  template:
+    metadata:
+      labels:
+        app: scaletests
+    spec:
+      containers:
+      - name: main
+        image: qserv/scaletests:latest
+        command: ['sleep', 'infinity']

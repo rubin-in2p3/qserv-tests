@@ -77,3 +77,6 @@ This query should run in ~2 minutes if the cache is empty and in ~35 seconds if 
 260787 galaxy clusters found (should be 260787)
 query ran in 30.2 seconds
 ```
+
+
+##  [Kubernetes HOW-TO](./doc/k8s.md)
