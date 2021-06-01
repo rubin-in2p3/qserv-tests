@@ -74,9 +74,9 @@ def fullScan_1(conn):
 
     -- Here we indicate which tables will be used and at the same time we define a short alias for each table
     FROM 
-      dc2_object_run2_2i_dr6_wfd.dpdd_ref as dref,
-      dc2_object_run2_2i_dr6_wfd.position as dpos,
-      dc2_object_run2_2i_dr6_wfd.dpdd_forced as dfrc
+      dp01_dc2_catalogs.reference as dref,
+      dp01_dc2_catalogs.position as dpos,
+      dp01_dc2_catalogs.forced_photometry as dfrc
 
     -- Here we specify the ra, dec bounding box and we use the special SQL function: scisql_s2PtInBox
     -- It is mandatory to put this constraint right after the WHERE statement
@@ -151,7 +151,7 @@ def main():
                       help="qserv server port [%default]")
     parser.add_option("-D", "--database",
                       type="string",
-                      default="dc2_object_run2_2i_dr6_wfd",
+                      default="dp01_dc2_catalogs",
                       help="qserv user [%default]")
 
     (opts, args) = parser.parse_args()
