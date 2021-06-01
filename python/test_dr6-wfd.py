@@ -31,14 +31,16 @@ def listTables(conn, cursor, db):
   cursor.execute(query)
   res = cursor.fetchall()
   print(f"found {len(res)} tables in {db}")
-  print([list(item.values()) for item in res])
+  tables = [list(item.values()) for item in res]
+  print(tables)
+  return tables
 
-def countObjects(conn, cursor, db):
-  query = f"SELECT COUNT(*) FROM {db}.position;"
-  cursor.execute(query)
-  res = cursor.fetchall()
-
-  print(f"{res[0]['COUNT(*)']} entries found - should be 147088445" )
+def countObjects(conn, cursor, db, tables):
+  for tbl in tables:
+    query = f"SELECT COUNT(*) FROM {db}.{tbl[0]};"
+    cursor.execute(query)
+    res = cursor.fetchall()
+    print(f"{tbl[0]} - {res[0]['COUNT(*)']} entries found - should be 147088445" )
 
 def fullScan_1(conn):
   # Simple query to trigger a full scan
@@ -167,8 +169,8 @@ def main():
     print("\n \n \n")
     print(f"Checking database {database}")
     listDB(conn, cursor)
-    listTables(conn, cursor, database)
-    countObjects(conn, cursor, database)
+    tables = listTables(conn, cursor, database)
+    countObjects(conn, cursor, database, tables)
     fullScan_1(conn)
 
 if __name__ == '__main__':
